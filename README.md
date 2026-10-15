@@ -1,26 +1,23 @@
 # Nmap NSE Audit Scripts: SNMP and NTP
 
-Coursework lab project with a reference SNMP information check, two SNMP
-enhancements, an NTP Mode 7 monlist reference check, and two NTP enhancements.
-The scripts are intended for authorized local testing and clearer audit output.
+Coursework lab project containing a reference SNMP information check, two SNMP
+enhancements, a reference-style NTP Mode 7 monlist check, and two NTP
+enhancements. Use only on systems you own or are authorized to assess.
 
 ## Scripts
 
 | Service | Script | Purpose |
 | --- | --- | --- |
-| SNMP | [`snmp-sysdescr-reference.nse`](scripts/snmp-sysdescr-reference.nse) | Reference check that retrieves the standard system description and uptime. Based on the Nmap script by Thomas Buchanan. |
-| SNMP | [`snmp-public-check-option1.nse`](scripts/snmp-public-check-option1.nse) | Checks whether the default community `public` can read `sysDescr.0`; reports potential information exposure or an inconclusive result. |
-| SNMP | [`snmp-public-check-option2.nse`](scripts/snmp-public-check-option2.nse) | Checks whether `public` can read `sysName.0` and `sysDescr.0`, then reports only returned values. |
-| NTP | [
-tp-custom.nse`](scripts/ntp-custom.nse) | Reference-style Mode 7 monlist response check. A response needs validation; silence is inconclusive. |
-| NTP | [
-tp-monlist-enhanced1.nse`](scripts/ntp-monlist-enhanced1.nse) | Validates the Mode 7 response bit, mode, implementation, opcode, and minimum header length. Runs against loopback only. |
-| NTP | [
-tp-monlist-enhanced2.nse`](scripts/ntp-monlist-enhanced2.nse) | Adds a byte count and a single-datagram response/request ratio; it is not a full amplification test. Runs against loopback only. |
+| SNMP | [`snmp-sysdescr-reference.nse`](scripts/snmp-sysdescr-reference.nse) | Reference check that retrieves the standard system description and uptime. |
+| SNMP | [`snmp-public-check-option1.nse`](scripts/snmp-public-check-option1.nse) | Checks whether the default community `public` can read `sysDescr.0`; reports potential exposure or an inconclusive result. |
+| SNMP | [`snmp-public-check-option2.nse`](scripts/snmp-public-check-option2.nse) | Checks whether `public` can read `sysName.0` and `sysDescr.0`. |
+| NTP | [`ntp-custom.nse`](scripts/ntp-custom.nse) | Reference-style Mode 7 monlist response check. A response needs validation; silence is inconclusive. |
+| NTP | [`ntp-monlist-enhanced1.nse`](scripts/ntp-monlist-enhanced1.nse) | Validates the Mode 7 response and distinguishes a non-matching reply from no reply. Loopback only. |
+| NTP | [`ntp-monlist-enhanced2.nse`](scripts/ntp-monlist-enhanced2.nse) | Reports a bounded one-datagram size ratio; this is not a full amplification measurement. Loopback only. |
 
-## Run in an Ubuntu/WSL lab
+## Local Ubuntu/WSL lab
 
-Install Nmap and, if needed, local SNMP and NTP services:
+Install Nmap and the services used in the localhost demonstrations:
 
 ```bash
 sudo apt update
@@ -28,37 +25,42 @@ sudo apt install -y nmap snmpd snmp chrony
 nmap --version
 ```
 
-Start and inspect the local services only if you need them for your lab:
+For the NTP test, configure Chrony in `/etc/chrony/chrony.conf` to listen on
+loopback only:
 
-```bash
-sudo systemctl start snmpd
-sudo systemctl status snmpd
-sudo systemctl start chrony
-sudo systemctl status chrony
+```conf
+allow 127.0.0.1
+bindaddress 127.0.0.1
 ```
 
-From the repository root, run one SNMP script at a time against loopback:
+Restart Chrony and verify its UDP listener:
 
 ```bash
+sudo service chrony restart
+sudo ss -lunp | grep ':123'
+```
+
+The NTP scan used for the supplied screenshot was run from the repository root:
+
+```bash
+sudo env NMAPDIR="$PWD" nmap -sU -Pn -p 123 \
+  --script ./scripts/ntp-custom.nse,./scripts/ntp-monlist-enhanced1.nse,./scripts/ntp-monlist-enhanced2.nse \
+  127.0.0.1
+```
+
+Run the SNMP scripts only against a local SNMP lab you control:
+
+```bash
+sudo service snmpd start
 sudo nmap -n -Pn -sU -p 161 --reason --script ./scripts/snmp-sysdescr-reference.nse 127.0.0.1
 sudo nmap -n -Pn -sU -p 161 --reason --script ./scripts/snmp-public-check-option1.nse 127.0.0.1
 sudo nmap -n -Pn -sU -p 161 --reason --script ./scripts/snmp-public-check-option2.nse 127.0.0.1
 ```
 
-Run the NTP checks against loopback only:
-
-```bash
-sudo nmap -n -Pn -sU -p 123 --reason --script ./scripts/ntp-custom.nse 127.0.0.1
-sudo nmap -n -Pn -sU -p 123 --reason --script ./scripts/ntp-monlist-enhanced1.nse 127.0.0.1
-sudo nmap -n -Pn -sU -p 123 --reason --script ./scripts/ntp-monlist-enhanced2.nse 127.0.0.1
-```
-
-Do not change the target to a public server or a system you do not administer.
-Do not enable legacy Mode 7 or expose UDP/123 to the network for a positive
-demo. NTP Mode 7 is legacy functionality; current NTP configuration docs
-describe it as disabled by default and deprecated. See the [NTP 
-tpdc` manual](https://www.ntp.org/documentation/4.2.8-series/ntpdc/)
-and [NTP configuration manual](https://www.ntp.org/documentation/4.2.8-series/ntp.conf/).
+Do not enable legacy Mode 7 or expose UDP/123 to a network for a positive demo.
+The [NTP `ntpdc` manual](https://www.ntp.org/documentation/4.2.8-series/ntpdc/)
+and [NTP configuration manual](https://www.ntp.org/documentation/4.2.8-series/ntp.conf/)
+describe the legacy context.
 
 ## Interpreting results
 
@@ -70,24 +72,22 @@ and [NTP configuration manual](https://www.ntp.org/documentation/4.2.8-series/nt
   applies.
 - UDP/123 `closed`, `open|filtered`, silence, or timeout is **inconclusive**,
   not proof that the service is secure. Filtering, bindings, disabled Mode 7,
-  query restrictions, version differences, and packet loss can all suppress a
-  reply.
+  query restrictions, version differences, and packet loss can suppress a reply.
 - Enhancement 2 measures only the first UDP datagram; its ratio is a limited
   local indicator, not a complete amplification factor.
 
 ## Blog material and screenshots
 
 - [`blog/blog1_snmp_enhancement.html`](blog/blog1_snmp_enhancement.html) is the
-  SNMP post with the real terminal screenshots embedded.
-- [`blog/blog2_nmap_lab_steps.html`](blog/blog2_nmap_lab_steps.html) is an
-  NTP-focused walkthrough. Add genuine localhost test screenshots at its marked
-  locations before publishing.
-- The original PNG captures are in [`screenshots/snmp/`](screenshots/snmp/).
+  SNMP post with terminal screenshots embedded.
+- [`blog/blog2_nmap_lab_steps.html`](blog/blog2_nmap_lab_steps.html) is the
+  NTP-focused walkthrough with the authentic localhost scan screenshot embedded.
+- SNMP captures are in [`screenshots/snmp/`](screenshots/snmp/).
+- The NTP capture is [`screenshots/ntp/04-loopback-combined-output.png`](screenshots/ntp/04-loopback-combined-output.png).
 
 ## Validation note
 
-The screenshots are supplied terminal captures. Earlier NTP script versions
-were loaded by Nmap 7.98 and exercised against a temporary loopback mock; that
-was not a real NTP service. The reference file and package were subsequently
-updated, so the current combined set has not been re-executed in Nmap. No
-screenshots or scan results were generated for this repository build.
+The included NTP terminal capture was supplied after an actual run with Nmap
+7.98 against Chrony listening on `127.0.0.1:123`. Nmap reported UDP/123 open;
+all three custom scripts reported no monlist reply and an inconclusive result.
+This does not prove that the host is secure or demonstrate a vulnerable server.
