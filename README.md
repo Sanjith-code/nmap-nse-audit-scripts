@@ -11,9 +11,12 @@ The scripts are intended for authorized local testing and clearer audit output.
 | SNMP | [`snmp-sysdescr-reference.nse`](scripts/snmp-sysdescr-reference.nse) | Reference check that retrieves the standard system description and uptime. Based on the Nmap script by Thomas Buchanan. |
 | SNMP | [`snmp-public-check-option1.nse`](scripts/snmp-public-check-option1.nse) | Checks whether the default community `public` can read `sysDescr.0`; reports potential information exposure or an inconclusive result. |
 | SNMP | [`snmp-public-check-option2.nse`](scripts/snmp-public-check-option2.nse) | Checks whether `public` can read `sysName.0` and `sysDescr.0`, then reports only returned values. |
-| NTP | [`ntp-custom.nse`](scripts/ntp-custom.nse) | Reference-style Mode 7 monlist response check. A response needs validation; silence is inconclusive. |
-| NTP | [`ntp-monlist-enhanced1.nse`](scripts/ntp-monlist-enhanced1.nse) | Validates the Mode 7 response bit, mode, implementation, opcode, and minimum header length. Runs against loopback only. |
-| NTP | [`ntp-monlist-enhanced2.nse`](scripts/ntp-monlist-enhanced2.nse) | Adds a byte count and a single-datagram response/request ratio; it is not a full amplification test. Runs against loopback only. |
+| NTP | [
+tp-custom.nse`](scripts/ntp-custom.nse) | Reference-style Mode 7 monlist response check. A response needs validation; silence is inconclusive. |
+| NTP | [
+tp-monlist-enhanced1.nse`](scripts/ntp-monlist-enhanced1.nse) | Validates the Mode 7 response bit, mode, implementation, opcode, and minimum header length. Runs against loopback only. |
+| NTP | [
+tp-monlist-enhanced2.nse`](scripts/ntp-monlist-enhanced2.nse) | Adds a byte count and a single-datagram response/request ratio; it is not a full amplification test. Runs against loopback only. |
 
 ## Run in an Ubuntu/WSL lab
 
@@ -53,7 +56,8 @@ sudo nmap -n -Pn -sU -p 123 --reason --script ./scripts/ntp-monlist-enhanced2.ns
 Do not change the target to a public server or a system you do not administer.
 Do not enable legacy Mode 7 or expose UDP/123 to the network for a positive
 demo. NTP Mode 7 is legacy functionality; current NTP configuration docs
-describe it as disabled by default and deprecated. See the [NTP `ntpdc` manual](https://www.ntp.org/documentation/4.2.8-series/ntpdc/)
+describe it as disabled by default and deprecated. See the [NTP 
+tpdc` manual](https://www.ntp.org/documentation/4.2.8-series/ntpdc/)
 and [NTP configuration manual](https://www.ntp.org/documentation/4.2.8-series/ntp.conf/).
 
 ## Interpreting results
@@ -75,8 +79,9 @@ and [NTP configuration manual](https://www.ntp.org/documentation/4.2.8-series/nt
 
 - [`blog/blog1_snmp_enhancement.html`](blog/blog1_snmp_enhancement.html) is the
   SNMP post with the real terminal screenshots embedded.
-- [`blog/blog2_nmap_lab_steps.html`](blog/blog2_nmap_lab_steps.html) contains
-  the lab walkthrough. It still has a YouTube-link placeholder and is a draft.
+- [`blog/blog2_nmap_lab_steps.html`](blog/blog2_nmap_lab_steps.html) is an
+  NTP-focused walkthrough. Add genuine localhost test screenshots at its marked
+  locations before publishing.
 - The original PNG captures are in [`screenshots/snmp/`](screenshots/snmp/).
 
 ## Validation note
@@ -86,4 +91,3 @@ were loaded by Nmap 7.98 and exercised against a temporary loopback mock; that
 was not a real NTP service. The reference file and package were subsequently
 updated, so the current combined set has not been re-executed in Nmap. No
 screenshots or scan results were generated for this repository build.
-

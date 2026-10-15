@@ -1,81 +1,67 @@
 <div style="font-family:Arial,Helvetica,sans-serif;color:#222;line-height:1.75;max-width:100%;margin:0;font-size:16px;">
-<div style="margin:0 0 18px;padding:0 0 14px;border-bottom:1px solid #ddd;background:none;color:#222;border-radius:0;"><p style="margin:0 0 8px;color:#444;font-size:16px;">A reproducible, step-by-step walkthrough of writing Lua NSE scripts, installing local services, updating Nmap’s script database, and interpreting the results.</p><p style="margin:12px 0 0;color:#666;font-size:14px;"><strong>Author:</strong> Sanjith Madhavan   •   <strong>Environment:</strong> Ubuntu / Nmap 7.98</p></div>
-<p style="margin:12px 0 18px;color:#666;font-size:14px;"><em>Topics: SNMP / UDP 161 · NTP / UDP 123 · Linux terminal · NSE script lifecycle</em></p>
-<div style="margin:18px 0;padding:0;border:0;background:none;"><strong>Purpose of this post:</strong> This is the procedure log for the demonstration video. Unlike the first blog, this article focuses on the steps and commands used to create, register, and run the scripts; screenshots are not necessary for this post.</div>
-<h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">1. Tools and concepts</h2>
-<p>The lab uses Nmap 7.98, its Nmap Scripting Engine (NSE), Lua, the SNMP daemon (<code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">snmpd</code>), and Chrony as the NTP service. SNMP commonly uses UDP port 161; NTP uses UDP port 123. These scripts were developed for a local lab target (<code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">127.0.0.1</code>).</p>
-<p>The SNMP script checks whether a request using the default community string can retrieve system information. The NTP script sends a legacy Mode 7 monlist probe and reports whether a response is detected. A response needs validation before calling a target vulnerable, and no response does not prove the target is secure.</p>
-<h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">2. Install the required packages</h2>
-<p>Update the package list and install the SNMP tools/service and Chrony:</p>
-<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:3px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">sudo apt update
-sudo apt install snmpd snmp chrony -y</pre>
-<p>Start the services and inspect their status:</p>
-<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:3px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">sudo systemctl start snmpd
-sudo systemctl status snmpd
-sudo systemctl start chrony
-sudo systemctl status chrony</pre>
-<p>The service-status command should show <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">Active: active (running)</code> if the daemon started successfully. A running service does not automatically mean every feature or port is exposed.</p>
-<h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">3. Create the SNMP NSE script</h2>
-<p>Open a new file in the terminal text editor:</p>
-<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:3px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">nano snmp-custom.nse</pre>
-<p>Paste the SNMP Lua source into Nano. The core logic imports <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">shortport</code> and <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">snmp</code>, selects UDP port 161, creates an SNMP helper with the community string <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">public</code>, and requests <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">sysDescr.0</code> (OID <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">1.3.6.1.2.1.1.1.0</code>). The script returns a potential-exposure message when the request returns a usable value; otherwise, it reports an inconclusive result.</p>
-<p>Save the file by pressing <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">Ctrl+O</code>, then <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">Enter</code>, and exit with <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">Ctrl+X</code>.</p>
-<h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">4. Create the NTP NSE script</h2>
-<p>Create the second file:</p>
-<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:3px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">nano ntp-custom.nse</pre>
-<p>Paste the NTP Lua source. The script imports <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">shortport</code> and <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">comm</code>, selects UDP port 123, constructs a legacy Mode 7 probe using <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">string.char()</code>, and sends it with <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">comm.exchange()</code>. The request uses a five-second timeout. If a response is received, the script reports its size and recommends validating the packet before confirming monlist exposure.</p>
-<p>Save with <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">Ctrl+O</code>, press <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">Enter</code>, and exit with <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">Ctrl+X</code>.</p>
-<h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">5. Install the scripts into Nmap</h2>
-<p>Copy both files into Nmap’s script directory and refresh the local script database:</p>
-<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:3px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">sudo cp snmp-custom.nse /usr/share/nmap/scripts/
-sudo cp ntp-custom.nse /usr/share/nmap/scripts/
-sudo nmap --script-updatedb</pre>
-<p>Verify that Nmap recognises each name:</p>
-<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:3px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">sudo nmap --script-help snmp-custom
-sudo nmap --script-help ntp-custom</pre>
-<p>If the description displayed for a script is not the description expected, inspect the file in <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">/usr/share/nmap/scripts/</code> to make sure the correct source was copied. Then rerun <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">sudo nmap --script-updatedb</code>.</p>
-<h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">6. Test the SNMP service</h2>
-<p>Check service status and verify UDP port 161:</p>
-<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:3px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">sudo systemctl status snmpd
-sudo nmap -sU -p 161 127.0.0.1</pre>
-<p>Run the custom NSE check against the local machine:</p>
-<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:3px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">sudo nmap -sU -p 161 --script=snmp-custom.nse 127.0.0.1</pre>
-<p>In the observed lab run, UDP 161 was open and the custom script printed a finding indicating that community <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">public</code> was accepted. A successful request should be validated against the returned OID value; it is good practice to use “potential exposure” unless the test has confirmed the exact condition being claimed.</p>
-<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:3px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">161/udp open  snmp
-| snmp-custom: VULNERABLE: Default community string "public" accepted.
-| Risk: Unauthorized information disclosure (CWE-521).
-|_Recommendation: Change the default community string and restrict SNMP access.</pre>
-<h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">7. Configure and test NTP port 123</h2>
-<p>First check the listener:</p>
-<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:3px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">sudo ss -lunp | grep :123
-sudo nmap -sU -p 123 127.0.0.1</pre>
-<p>Initially, the lab scan reported <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">123/udp closed ntp</code>. The script has a rule for UDP port 123, so Nmap does not normally invoke it when the port is reported closed.</p>
-<p>To configure Chrony to serve time to the local machine, open the configuration file:</p>
-<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:3px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">sudo nano /etc/chrony/chrony.conf</pre>
-<p>Add this directive on a new line:</p>
-<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:3px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">allow 127.0.0.1</pre>
-<p>Save and restart Chrony, then verify the socket:</p>
-<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:3px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">sudo systemctl restart chrony
-sudo systemctl status chrony
-sudo ss -lunp | grep :123</pre>
-<p>The observed socket listing showed <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">0.0.0.0:123</code>, meaning a process was listening on UDP port 123 across IPv4 interfaces. Use the Nmap scan again, then run the script:</p>
-<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:3px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">sudo nmap -sU -p 123 127.0.0.1
-sudo nmap -sU -p 123 --script=ntp-custom.nse 127.0.0.1</pre>
-<div style="margin:18px 0;padding:2px 0 2px 12px;border-left:3px solid #bbb;background:none;border-radius:0;"><strong>Interpretation note:</strong> An open UDP/123 port only confirms that a service appears to be listening. It does not prove that the legacy <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">monlist</code> feature is enabled. The custom script’s response must be validated as a real Mode 7 monlist response. If the port is closed, the absence of NSE output is expected because the port rule was not met.</div>
-<h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">8. Troubleshooting checklist</h2>
-<ul style="padding-left:24px;"><li style="margin:0 0 7px;"><strong>“Failed to resolve 161”:</strong> use <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">-p 161</code> or <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">-p 123</code> to specify a port. For example, use <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">nmap -sU -p 161 ...</code>, not <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">nmap -sU 161 ...</code>.</li><li style="margin:0 0 7px;"><strong>No NSE output:</strong> check whether the port is open and whether the script's <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">portrule</code> matches the port and protocol.</li><li style="margin:0 0 7px;"><strong>“Script execution failed”:</strong> run with <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">-d</code> and inspect the Lua error and line number. A nil table entry should be checked before indexing it.</li><li style="margin:0 0 7px;"><strong>Script description looks wrong:</strong> verify the exact installed file and rerun <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">nmap --script-updatedb</code>.</li><li style="margin:0 0 7px;"><strong>No response:</strong> report an inconclusive check rather than declaring the host secure.</li></ul>
-<h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">9. Demonstration video</h2>
-<div style="margin:12px 0;padding:10px 0;border-top:1px solid #ddd;border-bottom:1px solid #ddd;background:none;border-radius:0;"><strong>Replace before publishing:</strong><br/>YouTube video URL: <code style="font-family:Consolas,Monaco,monospace;background:#f4f4f4;padding:1px 3px;">[PASTE THE PUBLIC OR UNLISTED VIDEO LINK HERE]</code><br/>Make sure the video shows the same script versions and commands documented in this article. If the video is unlisted, test the link in a private/incognito window.</div>
-<h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">10. Conclusion</h2>
-<p>This procedure demonstrates the full NSE workflow: writing a Lua script, installing local test services, registering the scripts with Nmap, checking the target ports, and interpreting the script output. The SNMP test demonstrates why a default read community can expose system details. The NTP test demonstrates why port availability and vulnerability validation are separate steps.</p>
-<p>All commands in this walkthrough are intended for a locally controlled lab or systems for which permission has been granted.</p>
-<h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">Acknowledgements</h2>
-<p>I sincerely thank the <strong>School of Computer Science and Engineering (SCOPE), Vellore Institute of Technology Chennai</strong>, for offering the Cyber Security course during Fall Semester 2026–2027 with an industry-standard syllabus.</p>
-<p>I also acknowledge <strong>Dr. T. Subbulakshmi, Professor, SCOPE, VIT Chennai</strong>, for the course guidance and learning opportunity.</p>
-<p>My thanks to <strong>Gordon “Fyodor” Lyon</strong>, creator of Nmap, and to the Nmap developers and documentation contributors for maintaining a valuable open-source network-scanning and scripting ecosystem.</p>
-<p><strong>Peers and personal support:</strong> [Add peer name(s) and the suggestion or technical help they contributed, if applicable.] I am also grateful to [friend’s name, if applicable] for guidance during the initial stages, and to my parents, siblings, and relatives for their support.</p>
-<p><strong>Technical references:</strong> Nmap NSE documentation, official NSEDoc script pages, the Nmap reference guide, and the NVD entry for CVE-2013-5211 were used to support this learning exercise.</p>
+<p style="margin:0 0 8px;color:#444;font-size:17px;">A safe localhost walkthrough of three custom Nmap NSE checks for legacy NTP Mode 7 monlist behavior: a basic response check, a validated-response enhancement, and a bounded response-size enhancement.</p>
+<p style="margin:12px 0 0;color:#666;font-size:14px;"><strong>Author:</strong> Sanjith Madhavan &nbsp;•&nbsp; <strong>Lab:</strong> Ubuntu / WSL and Nmap</p>
+<p style="margin:12px 0 18px;color:#666;font-size:14px;"><em>Topics: NTP / UDP 123 · Nmap Scripting Engine · Lua · CVE-2013-5211</em></p>
+<div style="margin:18px 0;padding:12px 14px;border-left:4px solid #b25b00;background:#fff8ed;"><strong>Safety and interpretation:</strong> Run these scripts only against your own localhost lab. The repository’s NTP scripts are restricted to loopback. Do not enable legacy Mode 7, expose UDP/123 to the internet, or scan a public time server. A closed UDP/123 port, silence, or timeout is <strong>inconclusive</strong>; it is not proof that a host is secure. A normal NTP reply does not demonstrate monlist support.</div>
+<p>This post complements my SNMP script article with the NTP half of the project. The scripts are for learning how NSE checks are structured and how to interpret limited network evidence. They do not enumerate client addresses or prove vulnerability from silence.</p>
+<p>Project files and the complete README are in my <a href="https://github.com/Sanjith-code/nmap-nse-audit-scripts" target="_blank" rel="noopener" style="color:#1558a6;text-decoration:underline;">Nmap NSE audit scripts repository</a>. It is private, so GitHub access is required.</p>
+
+<h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">1. What the three scripts check</h2>
+<ul style="padding-left:24px;">
+<li style="margin:0 0 8px;"><strong><code>ntp-custom.nse</code>:</strong> sends one legacy monlist request and reports whether a response was received. A response still needs validation.</li>
+<li style="margin:0 0 8px;"><strong><code>ntp-monlist-enhanced1.nse</code>:</strong> checks for the expected Mode 7 response bit, implementation, opcode, and minimum header length. It reads one datagram and does not display client records.</li>
+<li style="margin:0 0 8px;"><strong><code>ntp-monlist-enhanced2.nse</code>:</strong> adds the first reply’s byte count and ratio to the 48-byte request. This single-datagram ratio is a limited indicator, not a full amplification measurement.</li>
+</ul>
+<p>A matching legacy reply is a reason to review the server’s version and configuration. Confirming whether CVE-2013-5211 applies requires context beyond one packet.</p>
+
+<h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">2. Get the scripts and check the lab tools</h2>
+<p>After signing in to GitHub and authenticating Git in WSL, clone the private project and enter its folder:</p>
+<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:4px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">git clone https://github.com/Sanjith-code/nmap-nse-audit-scripts.git
+cd nmap-nse-audit-scripts</pre>
+<p>Install Nmap and Chrony if needed, then record the Nmap version:</p>
+<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:4px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">sudo apt update
+sudo apt install -y nmap chrony
+nmap --version</pre>
+<p>Start the local time service only if you want a normal NTP service available. Chrony does not need legacy monlist enabled for this walkthrough:</p>
+<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:4px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">sudo systemctl start chrony
+sudo systemctl status chrony --no-pager
+sudo ss -lunp | grep ':123'</pre>
+<div style="margin:18px 0;padding:10px 12px;border:1px dashed #999;background:#fafafa;color:#555;"><strong>Screenshot needed before publishing:</strong> capture the real Chrony service status and local UDP/123 listener. Do not change Chrony to expose the service on a network interface.</div>
+
+<h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">3. Confirm Nmap can read the script files</h2>
+<p>From the repository root, display each script’s help text:</p>
+<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:4px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">sudo nmap --script-help ./scripts/ntp-custom.nse
+sudo nmap --script-help ./scripts/ntp-monlist-enhanced1.nse
+sudo nmap --script-help ./scripts/ntp-monlist-enhanced2.nse</pre>
+<p>If Nmap reports a Lua syntax or script-loading error, stop and fix that before scanning. Do not describe a failed load as a network finding.</p>
+<div style="margin:18px 0;padding:10px 12px;border:1px dashed #999;background:#fafafa;color:#555;"><strong>Screenshot needed before publishing:</strong> capture the Nmap version and the three script-help results in your own terminal. Do not include credentials, tokens, or unrelated private information.</div>
+
+<h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">4. Run each check against localhost</h2>
+<p>Run one script at a time so each result is easy to review and capture. These commands target only IPv4 loopback:</p>
+<pre style="background:#f6f6f6;color:#222;border:1px solid #ddd;border-radius:4px;padding:12px;overflow:auto;white-space:pre;line-height:1.55;font-size:13px;font-family:Consolas,Monaco,monospace;">sudo nmap -n -Pn -sU -p 123 --reason --script ./scripts/ntp-custom.nse 127.0.0.1
+sudo nmap -n -Pn -sU -p 123 --reason --script ./scripts/ntp-monlist-enhanced1.nse 127.0.0.1
+sudo nmap -n -Pn -sU -p 123 --reason --script ./scripts/ntp-monlist-enhanced2.nse 127.0.0.1</pre>
+<p>Output depends on the local service and network stack. Record exactly what your terminal shows. A closed result, no script output, or a timeout does not establish that monlist is disabled or that the host is secure; it means this check did not obtain a response to validate.</p>
+<div style="margin:18px 0;padding:10px 12px;border:1px dashed #999;background:#fafafa;color:#555;"><strong>Screenshots needed before publishing:</strong> take one genuine terminal capture for each of the three commands above. Keep the target visible as <code>127.0.0.1</code>. Do not create a positive monlist result by enabling Mode 7.</div>
+
+<h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">5. How to read the results</h2>
+<ul style="padding-left:24px;">
+<li style="margin:0 0 8px;">A response from the basic check means only that a packet was received; validate it before making a vulnerability claim.</li>
+<li style="margin:0 0 8px;">A reply rejected by Enhancement 1 did not match the expected header fields. That is not a vulnerability finding.</li>
+<li style="margin:0 0 8px;">A matching Mode 7 monlist reply is evidence of legacy handling and warrants configuration review. It is not a general measurement of amplification.</li>
+<li style="margin:0 0 8px;">Enhancement 2 measures one UDP datagram only. It does not count additional response packets or calculate a complete amplification factor.</li>
+<li style="margin:0 0 8px;">UDP/123 closed, open|filtered, silence, and timeout are inconclusive outcomes.</li>
+</ul>
+
+<h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">6. Conclusion</h2>
+<p>This lab compares a basic NTP response check with two bounded enhancements that validate a Mode 7 header and report limited size information. Its main lesson is to describe what a packet actually demonstrates, keep legacy probing on a controlled loopback target, and treat silence as inconclusive.</p>
+<p>All testing described here is for systems I own or have explicit permission to assess. The scripts and localhost commands are available in the <a href="https://github.com/Sanjith-code/nmap-nse-audit-scripts" target="_blank" rel="noopener" style="color:#1558a6;text-decoration:underline;">project repository</a> (private; GitHub access required).</p>
+
 <h2 style="color:#222;font-size:24px;line-height:1.35;margin:30px 0 10px;font-weight:600;">References</h2>
-<ul style="padding-left:24px;"><li style="margin:0 0 7px;"><a href="https://nmap.org/book/nse.html" rel="noopener" style="color:#1558a6;text-decoration:underline;" target="_blank">Nmap Scripting Engine documentation</a></li><li style="margin:0 0 7px;"><a href="https://nmap.org/nsedoc/scripts/snmp-sysdescr.html" rel="noopener" style="color:#1558a6;text-decoration:underline;" target="_blank">NSEDoc — snmp-sysdescr</a></li><li style="margin:0 0 7px;"><a href="https://nmap.org/nsedoc/scripts/ntp-monlist.html" rel="noopener" style="color:#1558a6;text-decoration:underline;" target="_blank">NSEDoc — ntp-monlist</a></li><li style="margin:0 0 7px;"><a href="https://nvd.nist.gov/vuln/detail/CVE-2013-5211" rel="noopener" style="color:#1558a6;text-decoration:underline;" target="_blank">NVD — CVE-2013-5211</a></li></ul>
-<p style="border-top:1px solid #ddd;padding-top:12px;color:#666;font-size:13px;margin-top:28px;">Cyber Security • Fall Semester 2026–2027 • SCOPE, VIT Chennai</p>
+<ul style="padding-left:24px;">
+<li style="margin:0 0 7px;"><a href="https://nmap.org/book/nse.html" target="_blank" rel="noopener" style="color:#1558a6;text-decoration:underline;">Nmap Scripting Engine documentation</a></li>
+<li style="margin:0 0 7px;"><a href="https://nmap.org/nsedoc/scripts/ntp-monlist.html" target="_blank" rel="noopener" style="color:#1558a6;text-decoration:underline;">NSEDoc — ntp-monlist</a></li>
+<li style="margin:0 0 7px;"><a href="https://nvd.nist.gov/vuln/detail/CVE-2013-5211" target="_blank" rel="noopener" style="color:#1558a6;text-decoration:underline;">NVD — CVE-2013-5211</a></li>
+</ul>
+<p style="border-top:1px solid #ddd;padding-top:12px;color:#666;font-size:13px;margin-top:28px;">Cyber Security • SCOPE, VIT Chennai</p>
 </div>
